@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width,
+        initial scale=1.0">
+        <meta http-equiv="X-UA Compatible" content="ie=edge">
+        <title>Instagram</title>
+        <script src="vue.js"></script>
+    </head>
+    <body>
+        <div id="app">
+            <p>Введите @ пользователя в Instagram:</p>
+            <input type="text" v-model="username" placeholder="Например, zuck" :disabled="loading == 1">
+            <p><input type="submit" value="Добавить" v-if="loading == 0" @click="add"><div v-if="loading">{{ loading == 1 ? "Ожидайте... " + count + " фото обработано." : "Неверный @" }}</div></p>
+            <p>
+                <table border="1">
+                    <caption>Добавленные @</caption>
+                    <tr v-for="item in data">
+                        <td>{{ item.username }}</td>
+                    </tr>
+                </table>
+            </p>
+            <p>
+                <table border="1">
+                    <caption>Результат</caption>
+                    <tr>
+                        <th>Город</th><th>@</th>
+                    </tr>
+                    <tr v-for="(users, location) in results" v-if="users.length > 1">
+                        <td>{{ location }}</td><td><span v-for="(user, index) in users">{{ user }}{{ index != users.length - 1 ? ", " : "" }}</div></td>
+                    </tr>
+                </table>
+            </p>
+        </div>
+    </body>
+    <script>
+        const app = new Vue({
+            el: '#app',
+            data: {
+                username: "",
+                data: [],
+                results: {},
+                count: 0,
+                loading: 0
+            },
+            methods: {
+                error: function() {
+                    this.loading = 2;
+                    setTimeout(() => this.loading = 0, 3000);
+                },
+                add: async function () {
+                    for (const item of this.data) if (item.username === this.username) return;
+                    let id = '', end_cursor = '', response = null, commits = {}, locations = [];
+                    this.loading = 1;
+                    try {
+                        response = await fetch(`https://www.instagram.com/${this.username}/?__a=1`);
+                        commits = await response.json();
+                    } catch {
+                        this.error();
+                        return;
+                    }
+                    if (JSON.stringify(commits) === '{}') {
+                        this.error();
+                        return;
+                    }
+                    id = commits.graphql.user.id;
+                    let media = commits.graphql.user.edge_owner_to_timeline_media;
+                    end_cursor = media.page_info.end_cursor;
+                    for (const edge of media.edges) {
+                        ++this.count;
+                        if (edge.node.hasOwnProperty('location') && edge.node.location != null) locations = [...locations, edge.node.location.name];
+                    }
+                    while (end_cursor != null) {
+                        response = await fetch(`https://www.instagram.com/graphql/query/?query_hash=42323d64886122307be10013ad2dcc44&variables={"id":"${id}","first":"50","after":"${end_cursor}"}`);
+                        commits = await response.json();
+                        end_cursor = commits.data.user.edge_owner_to_timeline_media.page_info.end_cursor;
+                        media = commits.data.user.edge_owner_to_timeline_media;
+                        for (const edge of media.edges) {
+                            ++this.count;
+                            try {
+                                response = await fetch(`https://www.instagram.com/p/${edge.node.shortcode}/?__a=1`);
+                                commits = await response.json();
+                            } catch {
+                                continue;
+                            }
+                            media = commits.graphql.shortcode_media;
+                            if (media.hasOwnProperty('location') && edge.node.location != null) locations = [...locations, media.location.name];
+                            if (this.count >= 100) {
+                                end_cursor = null;
+                                break;
+                            }
+                        }
+                    }
+                    this.data = [...this.data, { username: this.username, locations: locations.filter((v, i) => locations.indexOf(v) === i) }];
+                }
+            },
+            watch: {
+                data: function (value) {
+                    this.loading = 0;
+                    this.count = 0;
+                    const last = value[value.length - 1];
+                    for (const location of last.locations) {
+                        if (!this.results.hasOwnProperty(location)) this.results[location] = [];
+                        this.results[location].push(last.username);
+                    }
+                }
+            }
+        });
+    </script>
+</html>
