@@ -102,7 +102,7 @@
                     const last = value[value.length - 1];
                     for (const location of last.locations) {
                         if (!this.results.hasOwnProperty(location)) this.results[location] = [];
-                        this.results[location].push(last.username);
+                        this.results[location] = [...this.results[location], last.username];
                     }
                 }
             }
